@@ -384,10 +384,10 @@ bool startSysexWrite(){
   stopSound();
 
   int fileNum=(sysexBuffer[4]&0x7F)|((sysexBuffer[5]&0x7F)<<7);
-  int firstChar=fileNum/26;
+  int firstChar=fileNum/36;
   if (firstChar>25) return false;
   fileName[0]=firstChar+65;
-  int secondChar=fileNum%26;
+  int secondChar=fileNum%36;
   if (secondChar>25) fileName[1]=48+secondChar-26;
   else fileName[1]=secondChar+65;
   
