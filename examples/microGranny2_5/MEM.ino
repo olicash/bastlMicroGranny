@@ -28,7 +28,7 @@ PROGMEM const uint16_t clearTo[]={
 
 
 #define VARIABLES_PER_PAGE 4
-PROGMEM prog_char labels[]={
+PROGMEM const char labels[]={
   "rcargmse"};
 
 #define RATE 0 //1024 - 10 R

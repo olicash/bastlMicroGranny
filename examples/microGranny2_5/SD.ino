@@ -48,7 +48,7 @@ void initSdCardAndReport(){
    */
 }
 
-uint8_t playBegin(char* name,unsigned char _sound) {
+uint8_t playBegin(const char* name,unsigned char _sound) {
 
   if(indexed(_sound)){
     if (!file.open(&root, index[_sound], O_READ)) {
@@ -64,9 +64,6 @@ uint8_t playBegin(char* name,unsigned char _sound) {
       index[_sound]=root.curPosition()/32-1;
       indexed(_sound,true); 
     }
-
-
-
   }
 
 
@@ -102,15 +99,14 @@ uint8_t playBegin(char* name,unsigned char _sound) {
 }
 
 
-
-
-void error(char* str) {
+void error(const char* str) {
   //  hw.initialize();
   hw.displayText(str);
   while(1){
     hw.updateDisplay(); 
   }
 }
+
 
 //#define COUNTER_THRESHOLD 255
 //int counter;
@@ -221,8 +217,3 @@ void chacha(){
   EEPROM.write(1002,currentPreset);
   EEPROM.write(1000,1),software_Reset(); 
 }
-
-
-
-
-

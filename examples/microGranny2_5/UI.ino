@@ -41,18 +41,18 @@ boolean longPress;
 //unsigned char updt;
 
 #define GRAIN_MAP_POINTS 8
-PROGMEM prog_uint16_t granSizeMap[16]={
+PROGMEM const uint16_t granSizeMap[16]={
   0,5,10,80,127,160,220,255,  0,25,25,100,400,1000,2000,4000};
 //const uint16_t granSizeMap[2]={0,30};//,80,127,160,190,255,  0,1,1,100,500,1000,2000};
 #define SHIFT_SPEED_POINTS 10
-PROGMEM prog_uint16_t shiftSpeedMap[20]={
+PROGMEM const uint16_t shiftSpeedMap[20]={
   0,30,60,85,110,146,180,195,220,255,  0,5000,12000,15000,16000,16000,17000,20000,27000,32000};
 uint16_t map16(uint16_t x, uint16_t in_min, uint16_t in_max, uint16_t out_min, uint16_t out_max)
 {
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
-uint16_t curveMap(uint8_t value, uint8_t numberOfPoints, prog_uint16_t * tableMap){
+uint16_t curveMap(uint8_t value, uint8_t numberOfPoints, const uint16_t * tableMap){
   //  value=value>>2;
   uint8_t inMin=0, inMax=255;
   uint16_t outMin=0, outMax=255;
@@ -803,7 +803,7 @@ void renderDisplay(){
 
 
 
-void showForWhile(char *show){
+void showForWhile(const char *show){
   whileShow=true;
   whileTime=millis();
   hw.displayText(show); 
@@ -899,31 +899,3 @@ void demo(){
  
  
  */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

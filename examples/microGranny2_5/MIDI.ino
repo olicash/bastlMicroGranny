@@ -13,6 +13,9 @@ unsigned char sound, activeSound;
 unsigned char inputChannel;
 #define BUFFER_SIZE 16
 unsigned char midiBuffer[BUFFER_SIZE];
+#define SYSEX_BUFFER_SIZE 125
+unsigned char sysexCtr=0;
+unsigned char sysexBuffer[SYSEX_BUFFER_SIZE];
 #define EMPTY 255
 unsigned char midiVelocity;
 unsigned char fromBuffer;
@@ -28,7 +31,7 @@ unsigned char setting;
 int attackInterval, releaseInterval;
 //long legatoPosition; 
 //const uint16_t
-PROGMEM prog_uint16_t noteSampleRateTable[49]={/*0-C*/
+PROGMEM const uint16_t noteSampleRateTable[49]={/*0-C*/
   2772,2929,3103,3281,3500,3679,3910,4146,4392,4660,4924,5231,5528,5863,6221,6579,6960,7355,7784,8278,8786,9333,9847,10420,11023,/*11*/ 11662,12402,13119,13898,14706,15606,16491,17550,18555,19677,20857, /*0*/22050,23420,24807,26197,27815,29480,29480,29480,29480,29480,29480,29480,/*48-C*/29480};
 
 
@@ -53,7 +56,6 @@ unsigned char noteToPlay(){
   return midiBuffer[fromBuffer];
 }
 
-
 void putNoteIn(unsigned char note){
   if(note<6) hw.freezeAllKnobs();
   if(notesInBuffer==BUFFER_SIZE-1) removeNote(midiBuffer[BUFFER_SIZE-1]);
@@ -68,7 +70,6 @@ void putNoteIn(unsigned char note){
     fromBuffer=ZERO;
   }
 
-
   if(thereIsNoteToPlay) {
     if(legato && note>=23 && note<66 && notesInBuffer>1) sound=note,sampleRateNow=(pgm_read_word_near(noteSampleRateTable+sound-23)),wave.setSampleRate(sampleRateNow);
     else playSound(midiBuffer[ZERO]);
@@ -80,6 +81,7 @@ void clearBuffer(){
   for(uint8_t i=ZERO;i<BUFFER_SIZE;i++) midiBuffer[i]=EMPTY;
   notesInBuffer=0;
 }
+
 boolean removeNote(unsigned char note){
   if(notesInBuffer>ZERO){ 
     unsigned char takenOut;
@@ -99,6 +101,7 @@ boolean removeNote(unsigned char note){
 
   }
 }
+
 unsigned char putNoteOut(unsigned char note){
   if(note<6) hw.freezeAllKnobs();
 
@@ -114,10 +117,6 @@ unsigned char putNoteOut(unsigned char note){
     return midiBuffer[ZERO];
 
   }
-
-
-
-
 }
 
 
@@ -139,6 +138,7 @@ unsigned char TOLERANCE=3;
 //#define TOLERANCE 3
 unsigned char controler, CCvalue;
 #define TOL_EE 1019
+
 void readMidiChannel(){
 
 //  sideChannel=EEPROM.read(SIDE_CHANNEL);
@@ -160,9 +160,6 @@ void readMidiChannel(){
   if(TOLERANCE!=12 && TOLERANCE!=7 && TOLERANCE!=3) TOLERANCE=3;
   //Serial.print(TOLERANCE);
  
-  
-  
-  
   for(uint8_t i=0;i<6;i++){
     if(hw.buttonState(bigButton[i])){
       /*
@@ -192,9 +189,8 @@ long lastClockPosition, clockLength;
 //boolean pb;
 //boolean side;
 int bytesAvailable;
+
 void readMidi(){
-
-
   //channel=map(analogRead(4),0,1024,0,16);
   while(Serial.available() > 0){
     bytesAvailable=Serial.available();
@@ -203,14 +199,43 @@ void readMidi(){
     else handleByte(Serial.read());
   }
 }
-boolean noteOnStatus=false, noteOffStatus=false, ccStatus=false, firstByte=true;
+
+boolean noteOnStatus=false, noteOffStatus=false, ccStatus=false, sysexStatus=false, firstByte=true;
 
 unsigned char number, value;
 unsigned char channel=0;
 
+#define SYSEX_START_BYTE 0xF0
+#define SYSEX_END_BYTE 0xF7
+#define SDS_DUMP_HEADER 0x01
+#define SDS_DATA_PACKET 0x02
+
+int sampleLength, sampleCtr;
+unsigned char bitDepth, lastPacketNumber, checkSum;
+bool writeSysex=false;
+char fileName[7]="AA.WAV";
+
 void handleByte(unsigned char incomingByte){
 
-  if(handleRealTime(incomingByte));
+  if (sysexStatus){
+    if (incomingByte==SYSEX_END_BYTE || (sysexCtr>=125 && incomingByte!=SYSEX_END_BYTE)){
+      if (incomingByte==SYSEX_END_BYTE && sysexBuffer[1]==0x7E){
+        if (sysexBuffer[3]==SDS_DUMP_HEADER && checkSDSHeaderValid()){
+          sampleLength=(sysexBuffer[10]&0x7F)|((sysexBuffer[11]&0x7F)<<7)|((sysexBuffer[12]&0x7F)<<14);
+          writeSysex=startSysexWrite();
+        }
+        else if (sysexBuffer[3]==SDS_DATA_PACKET && writeSysex && sysexBuffer[4]!=lastPacketNumber){
+          lastPacketNumber=(lastPacketNumber+1)&0x7F;
+          for (int i=0;i<125;i++) checkSum^=(sysexBuffer[i]&0x7F);
+          if (sysexBuffer[4]!=lastPacketNumber || sysexBuffer[124]!=checkSum) abortSysexWrite();
+          else writeSysexBuffer();
+        }
+      }
+      sysexStatus=false,sysexCtr=0;
+    }
+    else sysexBuffer[sysexCtr++]=incomingByte;
+  }
+  else if(handleRealTime(incomingByte));
   else{
     if(incomingByte>127) recognizeStatus(incomingByte);
 
@@ -219,8 +244,6 @@ void handleByte(unsigned char incomingByte){
       if(ccStatus) number=incomingByte;
       else if(noteOnStatus || noteOffStatus) number=incomingByte;
       else firstByte=true;
-
-
     }
     else{
       value=incomingByte;
@@ -228,30 +251,33 @@ void handleByte(unsigned char incomingByte){
       if(ccStatus) handleCC(number,value, channel);
       else if(noteOnStatus) handleNote(number,value, channel);
       else if(noteOffStatus) handleNote(number,0, channel);
-
-      //firstByte=true; 
     }
-
   } 
-
 }
+
 #define NOTE_ON_BYTE 0x09
 #define NOTE_OFF_BYTE 0x08
 #define CC_BYTE 0x0B
+
 void recognizeStatus(unsigned char incomingByte){
+  if (incomingByte==SYSEX_START_BYTE){
+    noteOnStatus=false, noteOffStatus=false, ccStatus=false, sysexStatus=true;
+    sysexCtr=0;
+    return;
+  }
+  
   channel=0;
   for(uint8_t i=0;i<4;i++) bitWrite(channel,i,bitRead(incomingByte,i));
 
   incomingByte=incomingByte>>4;
-  if(incomingByte==NOTE_ON_BYTE) noteOnStatus=true, noteOffStatus=false, ccStatus=false;
-  else if(incomingByte==NOTE_OFF_BYTE) noteOnStatus=false, noteOffStatus=true, ccStatus=false;
-  else if(incomingByte==CC_BYTE) noteOnStatus=false, noteOffStatus=false, ccStatus=true;
-  else noteOnStatus=false, noteOffStatus=false, ccStatus=false;
+  if(incomingByte==NOTE_ON_BYTE) noteOnStatus=true, noteOffStatus=false, ccStatus=false, sysexStatus=false;
+  else if(incomingByte==NOTE_OFF_BYTE) noteOnStatus=false, noteOffStatus=true, ccStatus=false, sysexStatus=false;
+  else if(incomingByte==CC_BYTE) noteOnStatus=false, noteOffStatus=false, ccStatus=true, sysexStatus=false;
+  else noteOnStatus=false, noteOffStatus=false, ccStatus=false, sysexStatus=false;
   firstByte=true;
   //channel=
-
-
 }
+
 void handleNote(unsigned char _number,unsigned char _value,unsigned char _channel){
  if(_number>6) _number--;
   if(_channel==inputChannel){
@@ -267,7 +293,6 @@ void handleCC(unsigned char _number,unsigned char _value,unsigned char _channel)
     proceedCC(_number,_value);
   }
 }
-
 
 boolean handleRealTime(unsigned char _incomingByte){
   if((_incomingByte>=0xF8) && (_incomingByte<=0xFF)){
@@ -324,7 +349,6 @@ void proceedCC(unsigned char _number,unsigned char _value){
 
 }
 
-
 /*
 void proceedPB(unsigned char _byte1,unsigned char _byte2){
  int pitchBendNow=word(_byte1,_byte2)-8192; 
@@ -332,7 +356,89 @@ void proceedPB(unsigned char _byte1,unsigned char _byte2){
  }
  */
 
+typedef struct Wav_header {
+  char riff_header[4]={'R','I','F','F'};
+  int wav_size; // Size of the wav portion of the file, which follows the first 8 bytes. File size - 8
+  char wave_header[4]={'W','A','V','E'};
+  char fmt_header[4]={'f','m','t',' '};
+  int fmt_chunk_size=16;
+  short audio_format=1;
+  short num_channels=1;
+  int sample_rate=22050;
+  int byte_rate; // Number of bytes per second. sample_rate * num_channels * Bytes Per Sample
+  short sample_alignment; // num_channels * Bytes Per Sample
+  short bit_depth; // Number of bits per sample
+  char data_header[4]={'d','a','t','a'};
+  int data_bytes; // Number of bytes in data. Number of samples * num_channels * sample byte size
+} Wav_header;
 
+bool checkSDSHeaderValid(){
+  if (sysexBuffer[6]!=8 || sysexBuffer[6]!=16) return false;
+  bitDepth=sysexBuffer[6];
+  int sp=(sysexBuffer[7]&0x7F)|((sysexBuffer[8]&0x7F)<<7)|((sysexBuffer[9]&0x7F)<<14);
+  if (sp!=45351) return false;  // 1000000000/22050
+  return true;
+}
 
+bool startSysexWrite(){
+  stopSound();
 
+  int fileNum=(sysexBuffer[4]&0x7F)|((sysexBuffer[5]&0x7F)<<7);
+  int firstChar=fileNum/26;
+  if (firstChar>25) return false;
+  fileName[0]=firstChar+65;
+  int secondChar=fileNum%26;
+  if (secondChar>25) fileName[1]=48+secondChar-26;
+  else fileName[1]=secondChar+65;
+  
+  if (file.open(&root, fileName, O_READ)){
+    file.close();
+    if (!SdFile::remove(&root, fileName)) return false;
+  }
+  if (!file.createContiguous(&root, fileName, MAX_FILE_SIZE)) return false;
+  if (!file.open(&root, fileName, O_WRITE)) return false;
 
+  Wav_header wav_header;
+  wav_header.sample_alignment=wav_header.bit_depth/8;
+  wav_header.data_bytes=sampleLength*wav_header.sample_alignment;
+  wav_header.wav_size=sizeof(wav_header) + wav_header.data_bytes - 8;
+  wav_header.byte_rate=wav_header.sample_rate*wav_header.sample_alignment;
+  if (!file.write((const void*)&wav_header,sizeof(wav_header)))
+  {
+    file.close();
+    SdFile::remove(&root, fileName);
+    return false;
+  }
+  lastPacketNumber=checkSum=0;
+  sampleCtr=0;
+  return true;
+}
+
+void writeSysexBuffer(){
+  if (bitDepth==16){
+    unsigned short sample;
+    for (int i=0;i<125 && sampleCtr<sampleLength;i+=3){
+      sample = ((unsigned short)sysexBuffer[i] << 9) | ((unsigned short)sysexBuffer[i+1] << 2) | (sysexBuffer[i+2] >> 5);
+      if (!file.write((const void*)&sample,sizeof(unsigned short))) abortSysexWrite();
+      sampleCtr++;
+    }
+  }
+  else{  // bitDepth==8 
+    unsigned char sample;
+    for (int i=0;i<125 && sampleCtr<sampleLength;i+=2){
+      sample = ((unsigned char)sysexBuffer[i] << 1) | (sysexBuffer[i+1] >> 6);
+      if (!file.write((const void*)&sample,sizeof(unsigned char))) abortSysexWrite();
+      sampleCtr++;
+    }
+  }
+  if (sampleCtr>=sampleLength){
+    file.close();
+    showForWhile("sysx");
+  }
+}
+
+void abortSysexWrite(){
+  file.close();
+  SdFile::remove(&root, fileName);
+  writeSysex=false;
+}

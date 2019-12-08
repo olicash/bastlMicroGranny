@@ -318,15 +318,3 @@ int rand( int minval,  int maxval)
  return (int) ((((xorshift96() & 0xFFFF) * (maxval-minval))>>16) + minval);
  }
  */
-
-
-
-
-
-
-
-
-
-
-
-

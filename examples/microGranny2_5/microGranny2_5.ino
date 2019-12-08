@@ -1,3 +1,13 @@
+#include <portManipulations.h>
+#include <mcpDac.h>
+#include <shiftRegisterFast.h>
+#include <pin_to_avr.h>
+#include <pgHW.h>
+#include <fastAnalogRead.h>
+#include <WaveStructs.h>
+#include <mg2HW.h>
+#include <WaveRP.h>
+
 /**
  * 
  * _ __ ___  / ___|___ \  
@@ -159,7 +169,3 @@ void loop() {
    readMidi();
    readMidi();
 }
-
-
-
-
